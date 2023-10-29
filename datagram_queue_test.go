@@ -31,15 +31,15 @@ var _ = Describe("Datagram Queue", func() {
 			go func() {
 				defer GinkgoRecover()
 				defer close(done)
-				Expect(queue.AddAndWait(frame)).To(Succeed())
+				Expect(queue.AddAndWait(context.Background(), frame)).To(Succeed())
 			}()
 
 			Eventually(queued).Should(HaveLen(1))
 			Consistently(done).ShouldNot(BeClosed())
 			f := queue.Peek()
 			Expect(f.Data).To(Equal([]byte("foobar")))
+			queue.Pop(nil)
 			Eventually(done).Should(BeClosed())
-			queue.Pop()
 			Expect(queue.Peek()).To(BeNil())
 		})
 
@@ -47,29 +47,78 @@ var _ = Describe("Datagram Queue", func() {
 			sent := make(chan struct{}, 1)
 			go func() {
 				defer GinkgoRecover()
-				Expect(queue.AddAndWait(&wire.DatagramFrame{Data: []byte("foo")})).To(Succeed())
+				Expect(queue.AddAndWait(context.Background(), &wire.DatagramFrame{Data: []byte("foo")})).To(Succeed())
 				sent <- struct{}{}
-				Expect(queue.AddAndWait(&wire.DatagramFrame{Data: []byte("bar")})).To(Succeed())
+				Expect(queue.AddAndWait(context.Background(), &wire.DatagramFrame{Data: []byte("bar")})).To(Succeed())
 				sent <- struct{}{}
 			}()
 
 			Eventually(queued).Should(HaveLen(1))
 			f := queue.Peek()
 			Expect(f.Data).To(Equal([]byte("foo")))
+			Expect(queue.Peek()).To(Equal(f))
+			Expect(queue.Peek()).To(Equal(f))
+			queue.Pop(nil)
 			Eventually(sent).Should(Receive())
-			Expect(queue.Peek()).To(Equal(f))
-			Expect(queue.Peek()).To(Equal(f))
-			queue.Pop()
 			Eventually(func() *wire.DatagramFrame { f = queue.Peek(); return f }).ShouldNot(BeNil())
 			f = queue.Peek()
 			Expect(f.Data).To(Equal([]byte("bar")))
+			queue.Pop(nil)
+			Eventually(sent).Should(Receive())
+		})
+
+		It("dequeued datagram when context is cancelled", func() {
+			frame := &wire.DatagramFrame{Data: []byte("foobar")}
+			errChan := make(chan error, 1)
+			ctx, cancel := context.WithCancel(context.Background())
+
+			go func() {
+				defer GinkgoRecover()
+				errChan <- queue.AddAndWait(ctx, frame)
+			}()
+
+			Consistently(errChan).ShouldNot(Receive())
+			Eventually(queue.Peek()).Should(Equal(frame))
+			cancel()
+			Expect(queue.Peek()).To(BeNil())
+			Eventually(errChan).Should(Receive(Equal(dropDatagramCtxCancelledErr)))
+		})
+
+		It("give up adding when context cancelled", func() {
+			frame1 := &wire.DatagramFrame{Data: []byte("foobar1")}
+			frame2 := &wire.DatagramFrame{Data: []byte("foobar2")}
+			routine1ErrChan := make(chan error, 1)
+			routine2ErrChan := make(chan error, 1)
+
+			routine1Ctx, routine1Cancel := context.WithCancel(context.Background())
+			go func() {
+				defer GinkgoRecover()
+				routine1ErrChan <- queue.AddAndWait(routine1Ctx, frame1)
+			}()
+
+			Consistently(routine1ErrChan).ShouldNot(Receive())
+			Eventually(queue.Peek()).Should(Equal(frame1))
+			routine2Ctx, routine2Cancel := context.WithCancel(context.Background())
+			go func() {
+				defer GinkgoRecover()
+				routine2ErrChan <- queue.AddAndWait(routine2Ctx, frame2)
+			}()
+			Expect(queue.Peek()).To(Equal(frame1))
+
+			routine2Cancel()
+			Eventually(routine2ErrChan).Should(Receive(Equal(dropDatagramCtxCancelledErr)))
+
+			Consistently(routine1ErrChan).ShouldNot(Receive())
+			routine1Cancel()
+			Expect(queue.Peek()).To(BeNil())
+			Eventually(routine1ErrChan).Should(Receive(Equal(dropDatagramCtxCancelledErr)))
 		})
 
 		It("closes", func() {
 			errChan := make(chan error, 1)
 			go func() {
 				defer GinkgoRecover()
-				errChan <- queue.AddAndWait(&wire.DatagramFrame{Data: []byte("foobar")})
+				errChan <- queue.AddAndWait(context.Background(), &wire.DatagramFrame{Data: []byte("foobar")})
 			}()
 
 			Consistently(errChan).ShouldNot(Receive())

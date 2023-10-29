@@ -255,7 +255,7 @@ func (mr *MockQUICConnMockRecorder) RemoteAddr() *gomock.Call {
 }
 
 // SendMessage mocks base method.
-func (m *MockQUICConn) SendMessage(arg0 []byte) error {
+func (m *MockQUICConn) SendMessage(arg0 context.Context, arg1 []byte) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SendMessage", arg0)
 	ret0, _ := ret[0].(error)
@@ -263,7 +263,7 @@ func (m *MockQUICConn) SendMessage(arg0 []byte) error {
 }
 
 // SendMessage indicates an expected call of SendMessage.
-func (mr *MockQUICConnMockRecorder) SendMessage(arg0 interface{}) *gomock.Call {
+func (mr *MockQUICConnMockRecorder) SendMessage(arg0 context.Context, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendMessage", reflect.TypeOf((*MockQUICConn)(nil).SendMessage), arg0)
 }
