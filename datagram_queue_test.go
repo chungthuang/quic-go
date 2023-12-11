@@ -3,6 +3,7 @@ package quic
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/quic-go/quic-go/internal/utils"
 	"github.com/quic-go/quic-go/internal/wire"
@@ -14,10 +15,11 @@ import (
 var _ = Describe("Datagram Queue", func() {
 	var queue *datagramQueue
 	var queued chan struct{}
+	const sendTimeout = time.Millisecond * 10
 
 	BeforeEach(func() {
 		queued = make(chan struct{}, 100)
-		queue = newDatagramQueue(func() { queued <- struct{}{} }, utils.DefaultLogger)
+		queue = newDatagramQueue(func() { queued <- struct{}{} }, utils.DefaultLogger, sendTimeout)
 	})
 
 	Context("sending", func() {
@@ -67,7 +69,7 @@ var _ = Describe("Datagram Queue", func() {
 			Eventually(sent).Should(Receive())
 		})
 
-		It("drop after peeking too many times", func() {
+		It("drop after send timeout", func() {
 			f := &wire.DatagramFrame{Data: []byte("foobar")}
 			errChan := make(chan error, 1)
 
@@ -76,9 +78,12 @@ var _ = Describe("Datagram Queue", func() {
 				errChan <- queue.AddAndWait(f)
 			}()
 			Eventually(queued).Should(HaveLen(1))
-			for i := 0; i < int(maxPeekAttempt-1); i++ {
-				Expect(queue.Peek()).To(Equal(f))
-			}
+			Expect(queue.Peek()).To(Equal(f))
+
+			time.Sleep(sendTimeout / 2)
+			Expect(queue.Peek()).To(Equal(f))
+
+			time.Sleep(sendTimeout)
 			Expect(queue.Peek()).To(BeNil())
 			Eventually(errChan).Should(Receive(Equal(&DatagramQueuedTooLong{})))
 		})

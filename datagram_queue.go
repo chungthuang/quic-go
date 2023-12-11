@@ -3,19 +3,19 @@ package quic
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/internal/utils"
 	"github.com/quic-go/quic-go/internal/wire"
 )
 
-const (
-	maxPeekAttempt uint8 = 5
-)
-
 type datagramQueue struct {
 	sendQueue chan *queuedDatagramFrame
 	nextFrame *queuedDatagramFrame
+
+	// 0 means no timeout
+	sendTimeout time.Duration
 
 	rcvMx    sync.Mutex
 	rcvQueue [][]byte
@@ -32,11 +32,18 @@ type datagramQueue struct {
 }
 
 type queuedDatagramFrame struct {
-	frame     *wire.DatagramFrame
-	peekCount uint8
+	frame      *wire.DatagramFrame
+	expireTime time.Time
 }
 
-func newDatagramQueue(hasData func(), logger utils.Logger) *datagramQueue {
+func (qdf *queuedDatagramFrame) hasExpired() bool {
+	if qdf.expireTime.IsZero() {
+		return false
+	}
+	return qdf.expireTime.Before(time.Now())
+}
+
+func newDatagramQueue(hasData func(), logger utils.Logger, sendTimeout time.Duration) *datagramQueue {
 	return &datagramQueue{
 		hasData:   hasData,
 		sendQueue: make(chan *queuedDatagramFrame, 1),
@@ -50,8 +57,13 @@ func newDatagramQueue(hasData func(), logger utils.Logger) *datagramQueue {
 // AddAndWait queues a new DATAGRAM frame for sending.
 // It blocks until the frame has been dequeued.
 func (h *datagramQueue) AddAndWait(f *wire.DatagramFrame) error {
+	var expireTime time.Time
+	if h.sendTimeout > 0 {
+		expireTime = time.Now().Add(h.sendTimeout)
+	}
 	frame := &queuedDatagramFrame{
-		frame: f,
+		frame:      f,
+		expireTime: expireTime,
 	}
 
 	select {
@@ -84,8 +96,7 @@ func (h *datagramQueue) Peek() *wire.DatagramFrame {
 }
 
 func (h *datagramQueue) dequeueNextFrame() *wire.DatagramFrame {
-	h.nextFrame.peekCount++
-	if h.nextFrame.peekCount >= maxPeekAttempt {
+	if h.nextFrame.hasExpired() {
 		h.Pop(&DatagramQueuedTooLong{})
 		return nil
 	}

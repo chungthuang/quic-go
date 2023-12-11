@@ -322,9 +322,11 @@ type Config struct {
 	// Allow0RTT allows the application to decide if a 0-RTT connection attempt should be accepted.
 	// Only valid for the server.
 	Allow0RTT bool
-	// Enable QUIC datagram support (RFC 9221).
+	// Enable QUIC datagram support (RFC 9221).ConnectionIDGenerator
 	EnableDatagrams bool
-	Tracer          func(context.Context, logging.Perspective, ConnectionID) *logging.ConnectionTracer
+	// How long to wait for sending a datagram before timing out. 0 means no timeout
+	DatagramSendTimeout time.Duration
+	Tracer              func(context.Context, logging.Perspective, ConnectionID) *logging.ConnectionTracer
 }
 
 type ClientHelloInfo struct {

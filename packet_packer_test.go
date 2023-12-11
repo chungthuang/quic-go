@@ -26,6 +26,7 @@ import (
 var _ = Describe("Packet packer", func() {
 	const maxPacketSize protocol.ByteCount = 1357
 	const version = protocol.Version1
+	const sendDatagramTimeout = time.Millisecond * 10
 
 	var (
 		packer              *packetPacker
@@ -99,7 +100,7 @@ var _ = Describe("Packet packer", func() {
 		datagramQueued = make(chan struct{}, 100)
 		datagramQueue = newDatagramQueue(func() {
 			datagramQueued <- struct{}{}
-		}, utils.DefaultLogger)
+		}, utils.DefaultLogger, sendDatagramTimeout)
 
 		packer = newPacketPacker(protocol.ParseConnectionID([]byte{1, 2, 3, 4, 5, 6, 7, 8}), func() protocol.ConnectionID { return connID }, initialStream, handshakeStream, pnManager, retransmissionQueue, sealingManager, framer, ackFramer, datagramQueue, protocol.PerspectiveServer)
 	})
@@ -626,13 +627,12 @@ var _ = Describe("Packet packer", func() {
 			})
 
 			It("large datagram doesn't block send queue indefinitely", func() {
-				for i := 0; i < int(maxPeekAttempt+1); i++ {
-					ackFramer.EXPECT().GetAckFrame(protocol.Encryption1RTT, true).Return(&wire.AckFrame{AckRanges: []wire.AckRange{{Largest: 100}}})
-					pnManager.EXPECT().PeekPacketNumber(protocol.Encryption1RTT).Return(protocol.PacketNumber(0x42), protocol.PacketNumberLen2)
-					pnManager.EXPECT().PopPacketNumber(protocol.Encryption1RTT).Return(protocol.PacketNumber(0x42))
-					sealingManager.EXPECT().Get1RTTSealer().Return(getSealer(), nil)
-					framer.EXPECT().HasData()
-				}
+				ackFramer.EXPECT().GetAckFrame(protocol.Encryption1RTT, true).Return(&wire.AckFrame{AckRanges: []wire.AckRange{{Largest: 100}}})
+				pnManager.EXPECT().PeekPacketNumber(protocol.Encryption1RTT).Return(protocol.PacketNumber(0x42), protocol.PacketNumberLen2)
+				pnManager.EXPECT().PopPacketNumber(protocol.Encryption1RTT).Return(protocol.PacketNumber(0x42))
+				sealingManager.EXPECT().Get1RTTSealer().Return(getSealer(), nil)
+				framer.EXPECT().HasData()
+
 				largeFrame := &wire.DatagramFrame{
 					DataLenPresent: true,
 					Data:           make([]byte, maxPacketSize),
@@ -657,18 +657,19 @@ var _ = Describe("Packet packer", func() {
 				time.Sleep(scaleDuration(20 * time.Millisecond))
 
 				buffer := getPacketBuffer()
-				for i := 0; i < int(maxPeekAttempt); i++ {
-					p, err := packer.AppendPacket(buffer, maxPacketSize, protocol.Version1)
-					Expect(p).ToNot(BeNil())
-					Expect(err).ToNot(HaveOccurred())
-					Expect(p.Ack).ToNot(BeNil())
-					Expect(p.Frames).To(BeEmpty())
-					Expect(buffer.Data).ToNot(BeEmpty())
-				}
+
+				p, err := packer.AppendPacket(buffer, maxPacketSize, protocol.Version1)
+				Expect(p).ToNot(BeNil())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(p.Ack).ToNot(BeNil())
+				Expect(p.Frames).To(BeEmpty())
+				Expect(buffer.Data).ToNot(BeEmpty())
+
+				time.Sleep(sendDatagramTimeout)
 				Eventually(largeSender).Should(Receive(Equal(&DatagramQueuedTooLong{})))
 
 				Eventually(datagramQueued).Should(HaveLen(2))
-				p, err := packer.AppendPacket(buffer, maxPacketSize, protocol.Version1)
+				p, err = packer.AppendPacket(buffer, maxPacketSize, protocol.Version1)
 				Expect(p).ToNot(BeNil())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(p.Ack).ToNot(BeNil())
