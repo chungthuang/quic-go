@@ -104,6 +104,10 @@ func populateConfig(config *Config) *Config {
 	if initialPacketSize == 0 {
 		initialPacketSize = protocol.InitialPacketSize
 	}
+	maxUDPPayloadSize := config.MaxUDPPayloadSize
+	if maxUDPPayloadSize == 0 {
+		maxUDPPayloadSize = protocol.DefaultMaxUDPPayloadSize
+	}
 
 	return &Config{
 		GetConfigForClient:             config.GetConfigForClient,
@@ -121,6 +125,7 @@ func populateConfig(config *Config) *Config {
 		TokenStore:                     config.TokenStore,
 		EnableDatagrams:                config.EnableDatagrams,
 		InitialPacketSize:              initialPacketSize,
+		MaxUDPPayloadSize:              maxUDPPayloadSize,
 		DisablePathMTUDiscovery:        config.DisablePathMTUDiscovery,
 		Allow0RTT:                      config.Allow0RTT,
 		Tracer:                         config.Tracer,
