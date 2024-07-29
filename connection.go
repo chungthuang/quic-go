@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"reflect"
 	"slices"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -297,6 +299,16 @@ var newConnection = func(
 	)
 	s.currentMTUEstimate.Store(uint32(estimateMaxPayloadSize(protocol.ByteCount(s.config.InitialPacketSize))))
 	statelessResetToken := statelessResetter.GetStatelessResetToken(srcConnID)
+	// Allow server to define custom MaxUDPPayloadSize
+	maxUDPPayloadSize := protocol.MaxPacketBufferSize
+	if maxPacketSize := os.Getenv("TUNNEL_MAX_QUIC_PACKET_SIZE"); maxPacketSize != "" {
+		if customMaxPacketSize, err := strconv.ParseUint(maxPacketSize, 10, 64); err == nil {
+			maxUDPPayloadSize = int(customMaxPacketSize)
+		} else {
+			utils.DefaultLogger.Errorf("failed to parse TUNNEL_MAX_QUIC_PACKET_SIZE: %v", err)
+		}
+	}
+
 	params := &wire.TransportParameters{
 		InitialMaxStreamDataBidiLocal:   protocol.ByteCount(s.config.InitialStreamReceiveWindow),
 		InitialMaxStreamDataBidiRemote:  protocol.ByteCount(s.config.InitialStreamReceiveWindow),
@@ -307,7 +319,7 @@ var newConnection = func(
 		MaxUniStreamNum:                 protocol.StreamNum(s.config.MaxIncomingUniStreams),
 		MaxAckDelay:                     protocol.MaxAckDelayInclGranularity,
 		AckDelayExponent:                protocol.AckDelayExponent,
-		MaxUDPPayloadSize:               protocol.MaxPacketBufferSize,
+		MaxUDPPayloadSize:               protocol.ByteCount(maxUDPPayloadSize),
 		StatelessResetToken:             &statelessResetToken,
 		OriginalDestinationConnectionID: origDestConnID,
 		// For interoperability with quic-go versions before May 2023, this value must be set to a value
