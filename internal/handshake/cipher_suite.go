@@ -6,6 +6,7 @@ import (
 	"crypto/boring"
 	"crypto/cipher"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"os"
 
@@ -16,7 +17,10 @@ import (
 
 const aeadNonceLength = 12
 
-var useBoring = len(os.Getenv("USE_BORING")) != 0
+var (
+	useBoring             = len(os.Getenv("USE_BORING")) != 0
+	errBoringIsNotEnabled = errors.New("Boring was requested but not enabled")
+)
 
 type cipherSuite struct {
 	ID     uint16
@@ -49,8 +53,12 @@ func aeadAESGCMTLS13(key, nonceMask []byte) *xorNonceAEAD {
 		panic(err)
 	}
 	var aead cipher.AEAD
-	if useBoring && boring.Enabled() {
-		aead, err = tls.NewGCMTLS13(aes)
+	if useBoring {
+		if boring.Enabled() {
+			aead, err = tls.NewGCMTLS13(aes)
+		} else {
+			err = errBoringIsNotEnabled
+		}
 	} else {
 		aead, err = cipher.NewGCM(aes)
 	}
@@ -82,7 +90,7 @@ func aeadChaCha20Poly1305(key, nonceMask []byte) *xorNonceAEAD {
 type xorNonceAEAD struct {
 	nonceMask        [aeadNonceLength]byte
 	aead             cipher.AEAD
-	hasSeenNonceZero bool
+	hasSeenNonceZero bool // This value denotes if the aead field was used with a nonce = 0
 }
 
 func (f *xorNonceAEAD) NonceSize() int        { return 8 } // 64-bit sequence number
@@ -99,18 +107,23 @@ func allZeros(nonce []byte) bool {
 }
 
 func (f *xorNonceAEAD) Seal(out, nonce, plaintext, additionalData []byte) []byte {
-	if useBoring && !f.hasSeenNonceZero {
+	if useBoring && boring.Enabled() && !f.hasSeenNonceZero {
+		// BoringSSL expects that the first nonce passed to the
+		// AEAD instance is zero.
+		// At this point the nonce argument is either zero or
+		// an artificial one will be passed to the AEAD through
+		// [sealZeroNonce]
 		f.hasSeenNonceZero = true
 		if !allZeros(nonce) {
-			f.sealZeroNonce(nonce)
+			f.sealZeroNonce()
 		}
 	}
 
 	return f.seal(nonce, out, plaintext, additionalData)
 }
 
-func (f *xorNonceAEAD) sealZeroNonce(nonce []byte) {
-	zeroNonce := make([]byte, len(nonce))
+func (f *xorNonceAEAD) sealZeroNonce() {
+	zeroNonce := make([]byte, aeadNonceLength)
 	f.seal([]byte{}, zeroNonce, []byte{}, []byte{})
 }
 
