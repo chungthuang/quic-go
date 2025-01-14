@@ -15,11 +15,14 @@ import (
 
 // These cipher suite implementations are copied from the standard library crypto/tls package.
 
-const aeadNonceLength = 12
+const (
+	aeadNonceLength = 12
+)
 
 var (
 	useBoring             = len(os.Getenv("USE_BORING")) != 0
-	errBoringIsNotEnabled = errors.New("Boring was requested but not enabled")
+	errBoringIsNotEnabled = errors.New("boring was requested but not enabled")
+	zeroNonce             = [aeadNonceLength]byte{}
 )
 
 type cipherSuite struct {
@@ -129,8 +132,8 @@ func (f *xorNonceAEAD) Seal(out, nonce, plaintext, additionalData []byte) []byte
 }
 
 func (f *xorNonceAEAD) sealZeroNonce() {
-	zeroNonce := make([]byte, aeadNonceLength)
-	f.seal([]byte{}, zeroNonce, []byte{}, []byte{})
+	zeroNonce := [aeadNonceLength]byte{}
+	f.seal([]byte{}, zeroNonce[:], []byte{}, []byte{})
 }
 
 func (f *xorNonceAEAD) seal(nonce []byte, out []byte, plaintext []byte, additionalData []byte) []byte {
