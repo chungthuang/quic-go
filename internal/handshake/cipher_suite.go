@@ -107,15 +107,21 @@ func allZeros(nonce []byte) bool {
 }
 
 func (f *xorNonceAEAD) Seal(out, nonce, plaintext, additionalData []byte) []byte {
-	if useBoring && boring.Enabled() && !f.hasSeenNonceZero {
-		// BoringSSL expects that the first nonce passed to the
-		// AEAD instance is zero.
-		// At this point the nonce argument is either zero or
-		// an artificial one will be passed to the AEAD through
-		// [sealZeroNonce]
-		f.hasSeenNonceZero = true
-		if !allZeros(nonce) {
-			f.sealZeroNonce()
+	if useBoring {
+		if boring.Enabled() {
+			if !f.hasSeenNonceZero {
+				// BoringSSL expects that the first nonce passed to the
+				// AEAD instance is zero.
+				// At this point the nonce argument is either zero or
+				// an artificial one will be passed to the AEAD through
+				// [sealZeroNonce]
+				f.hasSeenNonceZero = true
+				if !allZeros(nonce) {
+					f.sealZeroNonce()
+				}
+			}
+		} else {
+			panic(errBoringIsNotEnabled)
 		}
 	}
 
