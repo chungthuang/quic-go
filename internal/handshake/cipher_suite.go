@@ -3,12 +3,9 @@ package handshake
 import (
 	"crypto"
 	"crypto/aes"
-	"crypto/boring"
 	"crypto/cipher"
 	"crypto/tls"
-	"errors"
 	"fmt"
-	"os"
 
 	"golang.org/x/crypto/chacha20poly1305"
 )
@@ -17,12 +14,6 @@ import (
 
 const (
 	aeadNonceLength = 12
-)
-
-var (
-	useBoring             = len(os.Getenv("USE_BORING")) != 0
-	errBoringIsNotEnabled = errors.New("boring was requested but not enabled")
-	zeroNonce             = [aeadNonceLength]byte{}
 )
 
 type cipherSuite struct {
@@ -55,16 +46,8 @@ func aeadAESGCMTLS13(key, nonceMask []byte) *xorNonceAEAD {
 	if err != nil {
 		panic(err)
 	}
-	var aead cipher.AEAD
-	if useBoring {
-		if boring.Enabled() {
-			aead, err = tls.NewGCMTLS13(aes)
-		} else {
-			err = errBoringIsNotEnabled
-		}
-	} else {
-		aead, err = cipher.NewGCM(aes)
-	}
+
+	aead, err := newAEAD(aes)
 	if err != nil {
 		panic(err)
 	}
@@ -100,43 +83,11 @@ func (f *xorNonceAEAD) NonceSize() int        { return 8 } // 64-bit sequence nu
 func (f *xorNonceAEAD) Overhead() int         { return f.aead.Overhead() }
 func (f *xorNonceAEAD) explicitNonceLen() int { return 0 }
 
-func allZeros(nonce []byte) bool {
-	for _, e := range nonce {
-		if e != 0 {
-			return false
-		}
-	}
-	return true
-}
-
 func (f *xorNonceAEAD) Seal(out, nonce, plaintext, additionalData []byte) []byte {
-	if useBoring {
-		if boring.Enabled() {
-			if !f.hasSeenNonceZero {
-				// BoringSSL expects that the first nonce passed to the
-				// AEAD instance is zero.
-				// At this point the nonce argument is either zero or
-				// an artificial one will be passed to the AEAD through
-				// [sealZeroNonce]
-				f.hasSeenNonceZero = true
-				if !allZeros(nonce) {
-					f.sealZeroNonce()
-				}
-			}
-		} else {
-			panic(errBoringIsNotEnabled)
-		}
-	}
-
 	return f.seal(nonce, out, plaintext, additionalData)
 }
 
-func (f *xorNonceAEAD) sealZeroNonce() {
-	zeroNonce := [aeadNonceLength]byte{}
-	f.seal([]byte{}, zeroNonce[:], []byte{}, []byte{})
-}
-
-func (f *xorNonceAEAD) seal(nonce []byte, out []byte, plaintext []byte, additionalData []byte) []byte {
+func (f *xorNonceAEAD) doSeal(nonce, out, plaintext, additionalData []byte) []byte {
 	for i, b := range nonce {
 		f.nonceMask[4+i] ^= b
 	}
