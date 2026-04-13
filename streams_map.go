@@ -10,6 +10,7 @@ import (
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/internal/qerr"
 	"github.com/quic-go/quic-go/internal/wire"
+	"github.com/quic-go/quic-go/logging"
 )
 
 // StreamLimitReachedError is returned from Conn.OpenStream and Conn.OpenUniStream
@@ -47,6 +48,7 @@ func newStreamsMap(
 	maxIncomingBidiStreams uint64,
 	maxIncomingUniStreams uint64,
 	perspective protocol.Perspective,
+	tracer *logging.ConnectionTracer,
 ) *streamsMap {
 	m := &streamsMap{
 		ctx:                    ctx,
@@ -56,6 +58,7 @@ func newStreamsMap(
 		maxIncomingBidiStreams: maxIncomingBidiStreams,
 		maxIncomingUniStreams:  maxIncomingUniStreams,
 		sender:                 sender,
+		tracer:                 tracer,
 	}
 	m.initMaps()
 	return m
