@@ -114,7 +114,7 @@ func (m *incomingStreamsMap[T]) GetOrOpenStream(num protocol.StreamNum) (T, erro
 		// consumers can observe anomalous stream ID jumps regardless of whether
 		// MaxIncomingStreams is set to a finite value.
 		if num > nextToOpen && m.tracer != nil && m.tracer.CreatedIncomingStreams != nil {
-			m.tracer.CreatedIncomingStreams(m.streamType, num-nextToOpen+1)
+			m.tracer.CreatedIncomingStreams(m.streamType, uint64(num-nextToOpen+1))
 		}
 		return *new(T), streamError{
 			message: "peer tried to open stream %d (current limit: %d)",
@@ -140,7 +140,7 @@ func (m *incomingStreamsMap[T]) GetOrOpenStream(num protocol.StreamNum) (T, erro
 	// * maxStream can only increase, so if the id was valid before, it definitely is valid now
 	// * highestStream is only modified by this function
 	if m.tracer != nil && m.tracer.CreatedIncomingStreams != nil {
-		m.tracer.CreatedIncomingStreams(m.streamType, num-m.nextStreamToOpen+1)
+		m.tracer.CreatedIncomingStreams(m.streamType, uint64(num-m.nextStreamToOpen+1))
 	}
 	for newNum := m.nextStreamToOpen; newNum <= num; newNum++ {
 		m.streams[newNum] = incomingStreamEntry[T]{stream: m.newStream(newNum)}
