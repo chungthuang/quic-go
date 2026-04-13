@@ -105,8 +105,17 @@ func (m *incomingStreamsMap[T]) AcceptStream(ctx context.Context) (T, error) {
 
 func (m *incomingStreamsMap[T]) GetOrOpenStream(num protocol.StreamNum) (T, error) {
 	m.mutex.RLock()
+	// Capture nextStreamToOpen while holding the read lock so we can compute
+	// the gap for the hook in both the reject and accept paths below.
+	nextToOpen := m.nextStreamToOpen
 	if num > m.maxStream {
 		m.mutex.RUnlock()
+		// Fire the hook even when the stream is rejected by the limit, so that
+		// consumers can observe anomalous stream ID jumps regardless of whether
+		// MaxIncomingStreams is set to a finite value.
+		if num > nextToOpen && m.tracer != nil && m.tracer.CreatedIncomingStreams != nil {
+			m.tracer.CreatedIncomingStreams(m.streamType, num-nextToOpen+1)
+		}
 		return *new(T), streamError{
 			message: "peer tried to open stream %d (current limit: %d)",
 			nums:    []protocol.StreamNum{num, m.maxStream},

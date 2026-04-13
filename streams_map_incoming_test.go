@@ -335,4 +335,12 @@ func TestStreamsMapIncomingCreatedIncomingStreamsHook(t *testing.T) {
 	_, err = m.GetOrOpenStream(3)
 	require.NoError(t, err)
 	require.Len(t, calls, 2)
+
+	// A stream ID beyond the limit is rejected, but the hook still fires so
+	// that consumers can observe the anomalous jump even when MaxIncomingStreams
+	// is set to a finite value. At this point nextStreamToOpen=7, so gap=2000-7+1=1994.
+	_, err = m.GetOrOpenStream(2000)
+	require.Error(t, err)
+	require.Len(t, calls, 3)
+	require.Equal(t, protocol.StreamNum(1994), calls[2].gap)
 }
