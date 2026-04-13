@@ -395,6 +395,7 @@ func TestStreamsMapIncomingCreatedIncomingStreamsHook(t *testing.T) {
 	_, err = m.GetOrOpenStream(6)
 	require.NoError(t, err)
 	require.Len(t, calls, 2)
+	require.Equal(t, protocol.StreamTypeBidi, calls[1].streamType)
 	require.Equal(t, protocol.StreamNum(1), calls[1].gap)
 
 	// Opening an already-known stream does not fire the hook.
@@ -408,5 +409,6 @@ func TestStreamsMapIncomingCreatedIncomingStreamsHook(t *testing.T) {
 	_, err = m.GetOrOpenStream(2000)
 	require.Error(t, err)
 	require.Len(t, calls, 3)
+	require.Equal(t, protocol.StreamTypeBidi, calls[2].streamType)
 	require.Equal(t, protocol.StreamNum(1994), calls[2].gap)
 }
