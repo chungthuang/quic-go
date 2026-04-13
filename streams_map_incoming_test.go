@@ -367,11 +367,11 @@ func TestStreamsMapIncomingRandomized(t *testing.T) {
 func TestStreamsMapIncomingCreatedIncomingStreamsHook(t *testing.T) {
 	type hookCall struct {
 		streamType logging.StreamType
-		gap        protocol.StreamNum
+		gap        uint64
 	}
 	var calls []hookCall
 	tracer := &logging.ConnectionTracer{
-		CreatedIncomingStreams: func(streamType logging.StreamType, gap protocol.StreamNum) {
+		CreatedIncomingStreams: func(streamType logging.StreamType, gap uint64) {
 			calls = append(calls, hookCall{streamType: streamType, gap: gap})
 		},
 	}
@@ -389,14 +389,14 @@ func TestStreamsMapIncomingCreatedIncomingStreamsHook(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, calls, 1)
 	require.Equal(t, protocol.StreamTypeBidi, calls[0].streamType)
-	require.Equal(t, protocol.StreamNum(5), calls[0].gap)
+	require.Equal(t, uint64(5), calls[0].gap)
 
 	// Opening the very next stream (6) is gap=1 — the normal case.
 	_, err = m.GetOrOpenStream(6)
 	require.NoError(t, err)
 	require.Len(t, calls, 2)
 	require.Equal(t, protocol.StreamTypeBidi, calls[1].streamType)
-	require.Equal(t, protocol.StreamNum(1), calls[1].gap)
+	require.Equal(t, uint64(1), calls[1].gap)
 
 	// Opening an already-known stream does not fire the hook.
 	_, err = m.GetOrOpenStream(3)
@@ -410,5 +410,5 @@ func TestStreamsMapIncomingCreatedIncomingStreamsHook(t *testing.T) {
 	require.Error(t, err)
 	require.Len(t, calls, 3)
 	require.Equal(t, protocol.StreamTypeBidi, calls[2].streamType)
-	require.Equal(t, protocol.StreamNum(1994), calls[2].gap)
+	require.Equal(t, uint64(1994), calls[2].gap)
 }

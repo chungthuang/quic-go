@@ -123,7 +123,6 @@ func (m *incomingStreamsMap[T]) GetOrOpenStream(id protocol.StreamID) (T, error)
 		return *new(T), &qerr.TransportError{
 			ErrorCode:    qerr.StreamLimitError,
 			ErrorMessage: fmt.Sprintf("peer tried to open stream %d (current limit: %d)", id, m.maxStream),
-		}
 	}
 	// if the num is smaller than the highest we accepted
 	// * this stream exists in the map, and we can return it, or
