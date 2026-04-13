@@ -10,6 +10,7 @@ import (
 	"github.com/quic-go/quic-go/internal/qerr"
 	"github.com/quic-go/quic-go/internal/synctest"
 	"github.com/quic-go/quic-go/internal/wire"
+	"github.com/quic-go/quic-go/logging"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -361,4 +362,43 @@ func TestStreamsMapIncomingRandomized(t *testing.T) {
 			t.Fatal("should have opened all streams")
 		}
 	})
+}
+
+func TestStreamsMapIncomingCreatedIncomingStreamsHook(t *testing.T) {
+	type hookCall struct {
+		streamType logging.StreamType
+		gap        protocol.StreamNum
+	}
+	var calls []hookCall
+	tracer := &logging.ConnectionTracer{
+		CreatedIncomingStreams: func(streamType logging.StreamType, gap protocol.StreamNum) {
+			calls = append(calls, hookCall{streamType: streamType, gap: gap})
+		},
+	}
+
+	m := newIncomingStreamsMap(
+		protocol.StreamTypeBidi,
+		func(num protocol.StreamNum) *mockGenericStream { return &mockGenericStream{num: num} },
+		1000,
+		func(f wire.Frame) {},
+		tracer,
+	)
+
+	// Opening stream 5 from a watermark of 1 should create a gap of 5.
+	_, err := m.GetOrOpenStream(5)
+	require.NoError(t, err)
+	require.Len(t, calls, 1)
+	require.Equal(t, protocol.StreamTypeBidi, calls[0].streamType)
+	require.Equal(t, protocol.StreamNum(5), calls[0].gap)
+
+	// Opening the very next stream (6) is gap=1 — the normal case.
+	_, err = m.GetOrOpenStream(6)
+	require.NoError(t, err)
+	require.Len(t, calls, 2)
+	require.Equal(t, protocol.StreamNum(1), calls[1].gap)
+
+	// Opening an already-known stream does not fire the hook.
+	_, err = m.GetOrOpenStream(3)
+	require.NoError(t, err)
+	require.Len(t, calls, 2)
 }
