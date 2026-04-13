@@ -77,6 +77,7 @@ func testStreamsMapCreatingAndDeletingStreams(t *testing.T,
 		1,
 		1,
 		perspective,
+		nil,
 	)
 	m.UpdateLimits(&wire.TransportParameters{
 		MaxBidiStreamNum: protocol.MaxStreamCount,
@@ -168,6 +169,7 @@ func testStreamsMapDeletingStreams(t *testing.T,
 		100,
 		100,
 		perspective,
+		nil,
 	)
 	m.UpdateLimits(&wire.TransportParameters{
 		MaxBidiStreamNum: 10,
@@ -271,6 +273,7 @@ func testStreamsMapStreamLimits(t *testing.T, perspective protocol.Perspective) 
 		100,
 		100,
 		perspective,
+		nil,
 	)
 
 	// increase via transport parameters
@@ -328,6 +331,7 @@ func TestStreamsMapClosing(t *testing.T) {
 		1,
 		1,
 		protocol.PerspectiveClient,
+		nil,
 	)
 	m.CloseWithError(assert.AnError)
 	_, err := m.OpenStream()
@@ -358,6 +362,7 @@ func TestStreamsMap0RTT(t *testing.T) {
 		1,
 		1,
 		protocol.PerspectiveClient,
+		nil,
 	)
 	// restored transport parameters
 	m.UpdateLimits(&wire.TransportParameters{
@@ -393,6 +398,7 @@ func TestStreamsMap0RTTRejection(t *testing.T) {
 		1,
 		1,
 		protocol.PerspectiveClient,
+		nil,
 	)
 
 	m.ResetFor0RTT()
