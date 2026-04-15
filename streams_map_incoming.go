@@ -6,6 +6,7 @@ import (
 
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/internal/wire"
+	"github.com/quic-go/quic-go/logging"
 )
 
 type incomingStream interface {
@@ -34,6 +35,8 @@ type incomingStreamsMap[T incomingStream] struct {
 	newStream        func(protocol.StreamNum) T
 	queueMaxStreamID func(*wire.MaxStreamsFrame)
 
+	tracer *logging.ConnectionTracer
+
 	closeErr error
 }
 
@@ -42,6 +45,7 @@ func newIncomingStreamsMap[T incomingStream](
 	newStream func(protocol.StreamNum) T,
 	maxStreams uint64,
 	queueControlFrame func(wire.Frame),
+	tracer *logging.ConnectionTracer,
 ) *incomingStreamsMap[T] {
 	return &incomingStreamsMap[T]{
 		newStreamChan:      make(chan struct{}, 1),
@@ -53,6 +57,7 @@ func newIncomingStreamsMap[T incomingStream](
 		nextStreamToOpen:   1,
 		nextStreamToAccept: 1,
 		queueMaxStreamID:   func(f *wire.MaxStreamsFrame) { queueControlFrame(f) },
+		tracer:             tracer,
 	}
 }
 
@@ -100,8 +105,17 @@ func (m *incomingStreamsMap[T]) AcceptStream(ctx context.Context) (T, error) {
 
 func (m *incomingStreamsMap[T]) GetOrOpenStream(num protocol.StreamNum) (T, error) {
 	m.mutex.RLock()
+	// Capture nextStreamToOpen while holding the read lock so we can compute
+	// the gap for the hook in both the reject and accept paths below.
+	nextToOpen := m.nextStreamToOpen
 	if num > m.maxStream {
 		m.mutex.RUnlock()
+		// Fire the hook even when the stream is rejected by the limit, so that
+		// consumers can observe anomalous stream ID jumps regardless of whether
+		// MaxIncomingStreams is set to a finite value.
+		if num > nextToOpen && m.tracer != nil && m.tracer.CreatedIncomingStreams != nil {
+			m.tracer.CreatedIncomingStreams(m.streamType, uint64(num-nextToOpen+1))
+		}
 		return *new(T), streamError{
 			message: "peer tried to open stream %d (current limit: %d)",
 			nums:    []protocol.StreamNum{num, m.maxStream},
@@ -125,6 +139,9 @@ func (m *incomingStreamsMap[T]) GetOrOpenStream(num protocol.StreamNum) (T, erro
 	// no need to check the two error conditions from above again
 	// * maxStream can only increase, so if the id was valid before, it definitely is valid now
 	// * highestStream is only modified by this function
+	if m.tracer != nil && m.tracer.CreatedIncomingStreams != nil {
+		m.tracer.CreatedIncomingStreams(m.streamType, uint64(num-m.nextStreamToOpen+1))
+	}
 	for newNum := m.nextStreamToOpen; newNum <= num; newNum++ {
 		m.streams[newNum] = incomingStreamEntry[T]{stream: m.newStream(newNum)}
 		select {

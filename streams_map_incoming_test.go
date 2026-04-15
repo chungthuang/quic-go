@@ -8,6 +8,7 @@ import (
 
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/internal/wire"
+	"github.com/quic-go/quic-go/logging"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -41,6 +42,7 @@ func TestStreamsMapIncomingGettingStreams(t *testing.T) {
 		},
 		maxNumStreams,
 		func(f wire.Frame) {},
+		nil,
 	)
 
 	// all streams up to the id on GetOrOpenStream are opened
@@ -79,6 +81,7 @@ func TestStreamsMapIncomingAcceptingStreams(t *testing.T) {
 		func(num protocol.StreamNum) *mockGenericStream { return &mockGenericStream{num: num} },
 		5,
 		func(f wire.Frame) {},
+		nil,
 	)
 
 	errChan := make(chan error, 1)
@@ -128,6 +131,7 @@ func TestStreamsMapIncomingDeletingStreams(t *testing.T) {
 		func(num protocol.StreamNum) *mockGenericStream { return &mockGenericStream{num: num} },
 		5,
 		func(f wire.Frame) { frameQueue = append(frameQueue, f) },
+		nil,
 	)
 	err := m.DeleteStream(1337)
 	require.Error(t, err)
@@ -173,6 +177,7 @@ func TestStreamsMapIncomingDeletingStreamsWithHighLimits(t *testing.T) {
 		func(num protocol.StreamNum) *mockGenericStream { return &mockGenericStream{num: num} },
 		uint64(protocol.MaxStreamCount-2),
 		func(f wire.Frame) { frameQueue = append(frameQueue, f) },
+		nil,
 	)
 
 	// open a bunch of streams
@@ -202,6 +207,7 @@ func TestStreamsMapIncomingClosing(t *testing.T) {
 		func(num protocol.StreamNum) *mockGenericStream { return &mockGenericStream{num: num} },
 		5,
 		func(f wire.Frame) {},
+		nil,
 	)
 
 	var streams []*mockGenericStream
@@ -243,6 +249,7 @@ func TestStreamsMapIncomingRandomized(t *testing.T) {
 		func(num protocol.StreamNum) *mockGenericStream { return &mockGenericStream{num: num} },
 		num,
 		func(f wire.Frame) {},
+		nil,
 	)
 
 	ids := make([]protocol.StreamNum, num)
@@ -289,4 +296,53 @@ func TestStreamsMapIncomingRandomized(t *testing.T) {
 	case <-time.After(timeout * 3 / 2):
 		t.Fatal("timeout")
 	}
+}
+
+func TestStreamsMapIncomingCreatedIncomingStreamsHook(t *testing.T) {
+	type hookCall struct {
+		streamType logging.StreamType
+		gap        uint64
+	}
+	var calls []hookCall
+	tracer := &logging.ConnectionTracer{
+		CreatedIncomingStreams: func(streamType logging.StreamType, gap uint64) {
+			calls = append(calls, hookCall{streamType: streamType, gap: gap})
+		},
+	}
+
+	m := newIncomingStreamsMap(
+		protocol.StreamTypeBidi,
+		func(num protocol.StreamNum) *mockGenericStream { return &mockGenericStream{num: num} },
+		1000,
+		func(f wire.Frame) {},
+		tracer,
+	)
+
+	// Opening stream 5 from a watermark of 1 should create a gap of 5.
+	_, err := m.GetOrOpenStream(5)
+	require.NoError(t, err)
+	require.Len(t, calls, 1)
+	require.Equal(t, protocol.StreamTypeBidi, calls[0].streamType)
+	require.Equal(t, uint64(5), calls[0].gap)
+
+	// Opening the very next stream (6) is gap=1 — the normal case.
+	_, err = m.GetOrOpenStream(6)
+	require.NoError(t, err)
+	require.Len(t, calls, 2)
+	require.Equal(t, protocol.StreamTypeBidi, calls[1].streamType)
+	require.Equal(t, uint64(1), calls[1].gap)
+
+	// Opening an already-known stream does not fire the hook.
+	_, err = m.GetOrOpenStream(3)
+	require.NoError(t, err)
+	require.Len(t, calls, 2)
+
+	// A stream ID beyond the limit is rejected, but the hook still fires so
+	// that consumers can observe the anomalous jump even when MaxIncomingStreams
+	// is set to a finite value. At this point nextStreamToOpen=7, so gap=2000-7+1=1994.
+	_, err = m.GetOrOpenStream(2000)
+	require.Error(t, err)
+	require.Len(t, calls, 3)
+	require.Equal(t, protocol.StreamTypeBidi, calls[2].streamType)
+	require.Equal(t, uint64(1994), calls[2].gap)
 }

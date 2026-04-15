@@ -9,6 +9,7 @@ import (
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/internal/qerr"
 	"github.com/quic-go/quic-go/internal/wire"
+	"github.com/quic-go/quic-go/logging"
 )
 
 type streamError struct {
@@ -50,6 +51,8 @@ type streamsMap struct {
 	queueControlFrame func(wire.Frame)
 	newFlowController func(protocol.StreamID) flowcontrol.StreamFlowController
 
+	tracer *logging.ConnectionTracer
+
 	mutex               sync.Mutex
 	outgoingBidiStreams *outgoingStreamsMap[streamI]
 	outgoingUniStreams  *outgoingStreamsMap[sendStreamI]
@@ -68,6 +71,7 @@ func newStreamsMap(
 	maxIncomingBidiStreams uint64,
 	maxIncomingUniStreams uint64,
 	perspective protocol.Perspective,
+	tracer *logging.ConnectionTracer,
 ) *streamsMap {
 	m := &streamsMap{
 		ctx:                    ctx,
@@ -77,6 +81,7 @@ func newStreamsMap(
 		maxIncomingBidiStreams: maxIncomingBidiStreams,
 		maxIncomingUniStreams:  maxIncomingUniStreams,
 		sender:                 sender,
+		tracer:                 tracer,
 	}
 	m.initMaps()
 	return m
@@ -99,6 +104,7 @@ func (m *streamsMap) initMaps() {
 		},
 		m.maxIncomingBidiStreams,
 		m.queueControlFrame,
+		m.tracer,
 	)
 	m.outgoingUniStreams = newOutgoingStreamsMap(
 		protocol.StreamTypeUni,
@@ -116,6 +122,7 @@ func (m *streamsMap) initMaps() {
 		},
 		m.maxIncomingUniStreams,
 		m.queueControlFrame,
+		m.tracer,
 	)
 }
 
