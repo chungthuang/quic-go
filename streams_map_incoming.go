@@ -8,7 +8,6 @@ import (
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/internal/qerr"
 	"github.com/quic-go/quic-go/internal/wire"
-	"github.com/quic-go/quic-go/logging"
 )
 
 type incomingStream interface {
@@ -36,8 +35,6 @@ type incomingStreamsMap[T incomingStream] struct {
 
 	newStream        func(protocol.StreamID) T
 	queueMaxStreamID func(*wire.MaxStreamsFrame)
-
-	tracer *logging.ConnectionTracer
 
 	closeErr error
 }
@@ -70,7 +67,6 @@ func newIncomingStreamsMap[T incomingStream](
 		nextStreamToOpen:   nextStreamToAccept,
 		nextStreamToAccept: nextStreamToAccept,
 		queueMaxStreamID:   func(f *wire.MaxStreamsFrame) { queueControlFrame(f) },
-		tracer:             tracer,
 	}
 }
 
