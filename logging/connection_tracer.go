@@ -38,11 +38,6 @@ type ConnectionTracer struct {
 	LossTimerCanceled                func()
 	ECNStateUpdated                  func(state ECNState, trigger ECNStateTrigger)
 	ChoseALPN                        func(protocol string)
-	// CreatedIncomingStreams is called when one or more incoming stream objects are
-	// created to satisfy a peer-initiated stream frame. gap is the number of stream
-	// objects created. A gap greater than 1 means intermediate streams were allocated
-	// to satisfy RFC 9000 §3.2 ordering requirements.
-	CreatedIncomingStreams func(streamType StreamType, gap uint64)
 	// Close is called when the connection is closed.
 	Close func()
 	Debug func(name, msg string)

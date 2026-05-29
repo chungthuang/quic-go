@@ -507,7 +507,6 @@ func (s *connection) preSetup() {
 		uint64(s.config.MaxIncomingStreams),
 		uint64(s.config.MaxIncomingUniStreams),
 		s.perspective,
-		s.tracer,
 	)
 	s.framer = newFramer(s.connFlowController)
 	s.receivedPackets.Init(8)

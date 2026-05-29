@@ -218,13 +218,6 @@ func NewMultiplexedConnectionTracer(tracers ...*ConnectionTracer) *ConnectionTra
 				}
 			}
 		},
-		CreatedIncomingStreams: func(streamType StreamType, gap uint64) {
-			for _, t := range tracers {
-				if t.CreatedIncomingStreams != nil {
-					t.CreatedIncomingStreams(streamType, gap)
-				}
-			}
-		},
 		Close: func() {
 			for _, t := range tracers {
 				if t.Close != nil {
